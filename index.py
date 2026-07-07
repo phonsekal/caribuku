@@ -4,14 +4,14 @@ import pandas as pd
 # Konfigurasi halaman agar tampilan lebar (Wide Mode)
 st.set_page_config(page_title="Inventarisasi BMN Sekretariat Badan Pengembangan dan Pembinaan Bahasa", layout="wide")
 
-# URL Google Sheet yang diarahkan khusus untuk mengekspor tab/sheet "slims"
-SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1X28Tqn3724QfoEy4quaFQa6Gy90CH4YK4cXfToaCMec/export?format=csv&sheet=slims"
+# URL Google Sheet BARU yang diarahkan khusus untuk mengekspor tab/sheet "slims"
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/17QsetCX0AX_u4w4fQbCxH6yOXXuinAfeVfe9acvkHiE/export?format=csv&sheet=slims"
 
 # Fungsi memuat data master dari Google Sheets lewat internet
 @st.cache_data(ttl=600)  # Data disimpan di cache selama 10 menit
 def load_data():
     try:
-        # Membaca data langsung dari URL ekspor CSV Google Sheet (Tab: slims)
+        # Membaca data langsung dari URL ekspor CSV Google Sheet Baru (Tab: slims)
         df = pd.read_csv(SHEET_CSV_URL, dtype=str, on_bad_lines='skip', encoding='utf-8')
         df.columns = df.columns.str.strip()
         df = df.loc[:, ~df.columns.str.contains('^Unnamed:|^\s*$', case=False, na=True)]
@@ -26,7 +26,7 @@ df = load_data()
 
 if df is not None:
     st.title("Sistem Inventarisasi Buku Perpustakaan Badan Bahasa 2026")
-    st.write("Sistem pencarian buku di seluruh kolom Google Sheet (Tab: slims)")
+    st.write("Sistem pencarian buku di seluruh kolom Google Sheet Baru (Tab: slims)")
     
     # Inisialisasi session state untuk menyimpan data pencarian
     if "df_tabel" not in st.session_state:
@@ -61,14 +61,12 @@ if df is not None:
                 # Menentukan kolom yang akan ditampilkan
                 kolom_tampil = []
                 
-                # Cek ketersediaan kolom Judul / Merk
+                # Cek ketersediaan kolom Judul / Merk / nama kolom alternatif yang mirip
                 if 'Judul' in hasil_filter.columns:
                     kolom_tampil.append('Judul')
                 elif 'Merk' in hasil_filter.columns:
                     kolom_tampil.append('Merk')
                 else:
-                    # Jika di sheet slims kolom judul bernama lain (misal: 'Judul Buku' atau 'Nama Barang'),
-                    # kode ini mengantisipasi agar tidak crash dan mendeteksi kolom yang mirip
                     kolom_judul_alt = [c for c in hasil_filter.columns if 'judul' in c.lower() or 'nama' in c.lower()]
                     if kolom_judul_alt:
                         hasil_filter = hasil_filter.rename(columns={kolom_judul_alt[0]: 'Judul'})
@@ -78,7 +76,6 @@ if df is not None:
                 if 'Klasifikasi' in hasil_filter.columns:
                     kolom_tampil.append('Klasifikasi')
                 else:
-                    # Antisipasi jika nama kolom klasifikasi di sheet slims divariasikan (misal: 'Kode Klasifikasi')
                     kolom_klasifikasi_alt = [c for c in hasil_filter.columns if 'klasifikasi' in c.lower() or 'kode' in c.lower()]
                     if kolom_klasifikasi_alt:
                         hasil_filter = hasil_filter.rename(columns={kolom_klasifikasi_alt[0]: 'Klasifikasi'})
@@ -105,7 +102,7 @@ if df is not None:
             
             st.success(f"Ditemukan {len(st.session_state.df_tabel)} baris data yang mengandung kata kunci '{st.session_state.kata_kunci}'")
             
-            # Jika kolom Klasifikasi terpaksa di-generate manual karena tidak kecocokan nama kolom asli
+            # Jika kolom Klasifikasi terpaksa di-generate manual karena tidak ada kecocokan nama kolom asli
             if 'Klasifikasi' in st.session_state.df_tabel.columns and (st.session_state.df_tabel['Klasifikasi'] == "-").all() and 'Klasifikasi' not in df.columns:
                 st.warning("Catatan: Kolom Klasifikasi / Kode tidak terdeteksi secara otomatis di sheet 'slims'.")
 
