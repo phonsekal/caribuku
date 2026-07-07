@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 # Konfigurasi halaman agar tampilan lebar (Wide Mode)
 st.set_page_config(page_title="Inventarisasi BMN Sekretariat Badan Pengembangan dan Pembinaan Bahasa", layout="wide")
@@ -26,7 +27,7 @@ df = load_data()
 
 if df is not None:
     st.title("Sistem Inventarisasi Buku Perpustakaan Badan Bahasa 2026")
-    st.write("Sistem pencarian buku di seluruh kolom Google Sheet (Tab: slims)")
+    st.write("Sistem pencarian cepat buku di seluruh kolom Google Sheet (Tab: slims)")
     
     # Inisialisasi session state untuk menyimpan data pencarian
     if "df_tabel" not in st.session_state:
@@ -39,29 +40,32 @@ if df is not None:
         search_query = st.text_input("Input pencarian (NUP, Judul, Kode, ISBN, Barcode, dll):", autocomplete="off").strip()
         submit_button = st.form_submit_button(label="🔍 Cari Data", type="primary")
 
-    # 2. Proses Pencarian di Semua Kolom
+    # 2. Proses Pencarian Vektor (Super Cepat)
     if submit_button:
         if search_query:
             query_clean = search_query.replace(" ", "").replace(".", "").lower()
             
-            matched_indices = []
-            matched_values = []  # List baru untuk menyimpan ISI dari kolom yang cocok
+            # 1. Buat replika dataframe yang sudah bersih (lowercase, tanpa spasi/titik) untuk dicocokkan
+            # Langkah ini diproses dalam bentuk matriks sekaligus (jauh lebih cepat daripada loop)
+            df_cleaned = df.astype(str).apply(lambda s: s.str.replace(" ", "", regex=False).str.replace(".", "", regex=False).str.lower())
             
-            # Cari kata kunci di setiap baris dan kolom
-            for idx, row in df.iterrows():
-                for col in df.columns:
-                    val_original = str(row[col])
-                    val_clean = val_original.replace(" ", "").replace(".", "").lower()
-                    if query_clean in val_clean:
-                        matched_indices.append(idx)
-                        matched_values.append(val_original)  # Ambil isi teks aslinya
-                        break  # Stop cari di kolom lain untuk baris ini jika sudah ketemu
+            # 2. Cari sel mana saja yang mengandung kata kunci
+            mask_match = df_cleaned.apply(lambda s: s.str.contains(query_clean, na=False))
             
-            # Jika data ditemukan
-            if matched_indices:
-                hasil_filter = df.loc[matched_indices].copy()
+            # 3. Ambil baris mana saja yang minimal ada 1 sel cocok
+            rows_matched = mask_match.any(axis=1)
+            
+            if rows_matched.any():
+                # Filter data asli berdasarkan baris yang cocok
+                hasil_filter = df[rows_matched].copy()
+                mask_match_filtered = mask_match[rows_matched]
                 
-                # Tambahkan kolom baru yang berisi teks/nilai yang dicocokkan
+                # 4. Ambil nilai sel asli pertama yang cocok pada tiap baris menggunakan numpy (Instan)
+                # Mencari posisi index kolom pertama yang True untuk setiap baris
+                col_indices = mask_match_filtered.values.argmax(axis=1)
+                
+                # Mengambil nilai sel asli dari baris & kolom yang tepat tersebut
+                matched_values = hasil_filter.values[np.arange(len(hasil_filter)), col_indices]
                 hasil_filter['Kata yang Dicari'] = matched_values
                 
                 # --- PROSES STANDARISASI KOLOM JUDUL ---
@@ -89,7 +93,6 @@ if df is not None:
                     hasil_filter['Kodefikasi'] = "-"
 
                 # --- PACKING 3 KOLOM UTAMA YANG DIMINTA ---
-                # Mengunci dataframe agar hanya menampilkan Judul, Kodefikasi, dan Isi pencocokan
                 df_final = hasil_filter[['Judul', 'Kodefikasi', 'Kata yang Dicari']].copy()
                 
                 # Simpan ke session state
@@ -109,7 +112,7 @@ if df is not None:
             
             st.success(f"Ditemukan {len(st.session_state.df_tabel)} baris data yang mengandung kata kunci '{st.session_state.kata_kunci}'")
             
-            # Menampilkan tabel final berisi 3 kolom: Judul, Kodefikasi, dan Kata yang Dicari
+            # Menampilkan tabel final berisi 3 kolom
             st.dataframe(
                 st.session_state.df_tabel,
                 use_container_width=True,
