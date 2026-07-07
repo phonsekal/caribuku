@@ -45,26 +45,26 @@ if df is not None:
             query_clean = search_query.replace(" ", "").replace(".", "").lower()
             
             matched_indices = []
-            matched_column_names = []
+            matched_values = []  # List baru untuk menyimpan ISI dari kolom yang cocok
             
             # Cari kata kunci di setiap baris dan kolom
             for idx, row in df.iterrows():
                 for col in df.columns:
-                    val_clean = str(row[col]).replace(" ", "").replace(".", "").lower()
+                    val_original = str(row[col])
+                    val_clean = val_original.replace(" ", "").replace(".", "").lower()
                     if query_clean in val_clean:
                         matched_indices.append(idx)
-                        matched_column_names.append(col)
+                        matched_values.append(val_original)  # Ambil isi teks aslinya
                         break  # Stop cari di kolom lain untuk baris ini jika sudah ketemu
             
             # Jika data ditemukan
             if matched_indices:
                 hasil_filter = df.loc[matched_indices].copy()
                 
-                # Tambahkan kolom pencocokan kata secara paksa
-                hasil_filter['Tempat Ditemukan (Kolom)'] = matched_column_names
+                # Tambahkan kolom baru yang berisi teks/nilai yang dicocokkan
+                hasil_filter['Kata yang Dicari'] = matched_values
                 
                 # --- PROSES STANDARISASI KOLOM JUDUL ---
-                # Cari kolom asli yang bernama 'Merk' atau 'Judul' atau mengandung unsur kata tersebut
                 kolom_judul_asli = None
                 for c in hasil_filter.columns:
                     if c.lower() in ['merk', 'judul'] or 'judul' in c.lower() or 'nama' in c.lower():
@@ -77,7 +77,6 @@ if df is not None:
                     hasil_filter['Judul'] = "Kolom Judul Tidak Terdeteksi"
 
                 # --- PROSES STANDARISASI KOLOM KODEFIKASI ---
-                # Cari kolom asli yang bernama 'Klasifikasi', 'Kode', atau mengandung kata tersebut
                 kolom_kode_asli = None
                 for c in hasil_filter.columns:
                     if c.lower() in ['klasifikasi', 'kode', 'kodefikasi'] or 'klasifikasi' in c.lower() or 'kode' in c.lower():
@@ -87,12 +86,11 @@ if df is not None:
                 if kolom_kode_asli:
                     hasil_filter['Kodefikasi'] = hasil_filter[kolom_kode_asli]
                 else:
-                    # Jika di sheet slims tidak ada kolom klasifikasi khusus, kita isi dengan tanda '-'
                     hasil_filter['Kodefikasi'] = "-"
 
                 # --- PACKING 3 KOLOM UTAMA YANG DIMINTA ---
-                # Kita buat struktur dataframe baru yang isinya HANYA 3 kolom ini secara mutlak
-                df_final = hasil_filter[['Judul', 'Kodefikasi', 'Tempat Ditemukan (Kolom)']].copy()
+                # Mengunci dataframe agar hanya menampilkan Judul, Kodefikasi, dan Isi pencocokan
+                df_final = hasil_filter[['Judul', 'Kodefikasi', 'Kata yang Dicari']].copy()
                 
                 # Simpan ke session state
                 st.session_state.df_tabel = df_final
@@ -111,7 +109,7 @@ if df is not None:
             
             st.success(f"Ditemukan {len(st.session_state.df_tabel)} baris data yang mengandung kata kunci '{st.session_state.kata_kunci}'")
             
-            # Menampilkan tabel final yang dijamin berisi 3 kolom
+            # Menampilkan tabel final berisi 3 kolom: Judul, Kodefikasi, dan Kata yang Dicari
             st.dataframe(
                 st.session_state.df_tabel,
                 use_container_width=True,
