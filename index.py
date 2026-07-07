@@ -45,8 +45,7 @@ if df is not None:
         if search_query:
             query_clean = search_query.replace(" ", "").replace(".", "").lower()
             
-            # 1. Buat replika dataframe yang sudah bersih (lowercase, tanpa spasi/titik) untuk dicocokkan
-            # Langkah ini diproses dalam bentuk matriks sekaligus (jauh lebih cepat daripada loop)
+            # 1. Buat replika dataframe yang sudah bersih untuk dicocokkan (Matriks)
             df_cleaned = df.astype(str).apply(lambda s: s.str.replace(" ", "", regex=False).str.replace(".", "", regex=False).str.lower())
             
             # 2. Cari sel mana saja yang mengandung kata kunci
@@ -60,11 +59,8 @@ if df is not None:
                 hasil_filter = df[rows_matched].copy()
                 mask_match_filtered = mask_match[rows_matched]
                 
-                # 4. Ambil nilai sel asli pertama yang cocok pada tiap baris menggunakan numpy (Instan)
-                # Mencari posisi index kolom pertama yang True untuk setiap baris
+                # 4. Ambil nilai sel asli pertama yang cocok pada tiap baris menggunakan numpy
                 col_indices = mask_match_filtered.values.argmax(axis=1)
-                
-                # Mengambil nilai sel asli dari baris & kolom yang tepat tersebut
                 matched_values = hasil_filter.values[np.arange(len(hasil_filter)), col_indices]
                 hasil_filter['Kata yang Dicari'] = matched_values
                 
@@ -92,8 +88,20 @@ if df is not None:
                 else:
                     hasil_filter['Kodefikasi'] = "-"
 
-                # --- PACKING 3 KOLOM UTAMA YANG DIMINTA ---
-                df_final = hasil_filter[['Judul', 'Kodefikasi', 'Kata yang Dicari']].copy()
+                # --- PROSES STANDARISASI KOLOM TAHUN TERBIT ---
+                kolom_tahun_asli = None
+                for c in hasil_filter.columns:
+                    if 'tahun' in c.lower() or 'terbit' in c.lower() or 'thn' in c.lower():
+                        kolom_tahun_asli = c
+                        break
+                
+                if kolom_tahun_asli:
+                    hasil_filter['Tahun Terbit'] = hasil_filter[kolom_tahun_asli]
+                else:
+                    hasil_filter['Tahun Terbit'] = "-"
+
+                # --- PACKING 4 KOLOM UTAMA YANG DIMINTA ---
+                df_final = hasil_filter[['Judul', 'Kodefikasi', 'Tahun Terbit', 'Kata yang Dicari']].copy()
                 
                 # Simpan ke session state
                 st.session_state.df_tabel = df_final
@@ -104,7 +112,7 @@ if df is not None:
             st.warning("Silakan masukkan kata kunci pencarian terlebih dahulu!")
             st.session_state.df_tabel = None
 
-    # 3. Tampilkan Tiga Kolom Hasil Pencarian secara Read-Only
+    # 3. Tampilkan Empat Kolom Hasil Pencarian secara Read-Only
     if st.session_state.df_tabel is not None:
         if isinstance(st.session_state.df_tabel, str) and st.session_state.df_tabel == "KOSONG":
             st.error("Data tidak ditemukan di kolom manapun pada sheet 'slims'.")
@@ -112,7 +120,7 @@ if df is not None:
             
             st.success(f"Ditemukan {len(st.session_state.df_tabel)} baris data yang mengandung kata kunci '{st.session_state.kata_kunci}'")
             
-            # Menampilkan tabel final berisi 3 kolom
+            # Menampilkan tabel final berisi 4 kolom
             st.dataframe(
                 st.session_state.df_tabel,
                 use_container_width=True,
