@@ -4,7 +4,7 @@ import pandas as pd
 # Konfigurasi halaman agar tampilan lebar (Wide Mode)
 st.set_page_config(page_title="Inventarisasi BMN Sekretariat Badan Pengembangan dan Pembinaan Bahasa", layout="wide")
 
-# URL Google Sheet BARU yang diarahkan khusus untuk mengekspor tab/sheet "slims"
+# URL Google Sheet Baru yang diarahkan khusus untuk mengekspor tab/sheet "slims"
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/17QsetCX0AX_u4w4fQbCxH6yOXXuinAfeVfe9acvkHiE/export?format=csv&sheet=slims"
 
 # Fungsi memuat data master dari Google Sheets lewat internet
@@ -26,7 +26,7 @@ df = load_data()
 
 if df is not None:
     st.title("Sistem Inventarisasi Buku Perpustakaan Badan Bahasa 2026")
-    st.write("Sistem pencarian buku di seluruh kolom Google Sheet Baru (Tab: slims)")
+    st.write("Sistem pencarian buku di seluruh kolom Google Sheet (Tab: slims)")
     
     # Inisialisasi session state untuk menyimpan data pencarian
     if "df_tabel" not in st.session_state:
@@ -44,49 +44,58 @@ if df is not None:
         if search_query:
             query_clean = search_query.replace(" ", "").replace(".", "").lower()
             
-            # Membuat mask/filter untuk memeriksa semua kolom pada sheet slims
-            mask = pd.Series(False, index=df.index)
-            for col in df.columns:
-                col_clean = df[col].astype(str).str.replace(" ", "", regex=False).str.replace(".", "", regex=False).str.lower()
-                mask = mask | col_clean.str.contains(query_clean, na=False)
+            matched_indices = []
+            matched_column_names = []
             
-            # Mengambil baris data yang lolos filter mask
-            hasil_filter = df[mask].copy()
+            # Cari kata kunci di setiap baris dan kolom
+            for idx, row in df.iterrows():
+                for col in df.columns:
+                    val_clean = str(row[col]).replace(" ", "").replace(".", "").lower()
+                    if query_clean in val_clean:
+                        matched_indices.append(idx)
+                        matched_column_names.append(col)
+                        break  # Stop cari di kolom lain untuk baris ini jika sudah ketemu
             
-            if not hasil_filter.empty:
-                # Mengubah nama kolom 'Merk' menjadi 'Judul' jika ada (untuk estetika tampilan)
-                if 'Merk' in hasil_filter.columns:
-                    hasil_filter = hasil_filter.rename(columns={'Merk': 'Judul'})
+            # Jika data ditemukan
+            if matched_indices:
+                hasil_filter = df.loc[matched_indices].copy()
                 
-                # Menentukan kolom yang akan ditampilkan
-                kolom_tampil = []
+                # Tambahkan kolom pencocokan kata secara paksa
+                hasil_filter['Tempat Ditemukan (Kolom)'] = matched_column_names
                 
-                # Cek ketersediaan kolom Judul / Merk / nama kolom alternatif yang mirip
-                if 'Judul' in hasil_filter.columns:
-                    kolom_tampil.append('Judul')
-                elif 'Merk' in hasil_filter.columns:
-                    kolom_tampil.append('Merk')
+                # --- PROSES STANDARISASI KOLOM JUDUL ---
+                # Cari kolom asli yang bernama 'Merk' atau 'Judul' atau mengandung unsur kata tersebut
+                kolom_judul_asli = None
+                for c in hasil_filter.columns:
+                    if c.lower() in ['merk', 'judul'] or 'judul' in c.lower() or 'nama' in c.lower():
+                        kolom_judul_asli = c
+                        break
+                
+                if kolom_judul_asli:
+                    hasil_filter['Judul'] = hasil_filter[kolom_judul_asli]
                 else:
-                    kolom_judul_alt = [c for c in hasil_filter.columns if 'judul' in c.lower() or 'nama' in c.lower()]
-                    if kolom_judul_alt:
-                        hasil_filter = hasil_filter.rename(columns={kolom_judul_alt[0]: 'Judul'})
-                        kolom_tampil.append('Judul')
+                    hasil_filter['Judul'] = "Kolom Judul Tidak Terdeteksi"
+
+                # --- PROSES STANDARISASI KOLOM KODEFIKASI ---
+                # Cari kolom asli yang bernama 'Klasifikasi', 'Kode', atau mengandung kata tersebut
+                kolom_kode_asli = None
+                for c in hasil_filter.columns:
+                    if c.lower() in ['klasifikasi', 'kode', 'kodefikasi'] or 'klasifikasi' in c.lower() or 'kode' in c.lower():
+                        kolom_kode_asli = c
+                        break
                 
-                # Cek ketersediaan kolom Klasifikasi
-                if 'Klasifikasi' in hasil_filter.columns:
-                    kolom_tampil.append('Klasifikasi')
+                if kolom_kode_asli:
+                    hasil_filter['Kodefikasi'] = hasil_filter[kolom_kode_asli]
                 else:
-                    kolom_klasifikasi_alt = [c for c in hasil_filter.columns if 'klasifikasi' in c.lower() or 'kode' in c.lower()]
-                    if kolom_klasifikasi_alt:
-                        hasil_filter = hasil_filter.rename(columns={kolom_klasifikasi_alt[0]: 'Klasifikasi'})
-                        kolom_tampil.append('Klasifikasi')
-                    else:
-                        # Jika benar-benar tidak ada, buat kolom kosong agar tidak error
-                        hasil_filter['Klasifikasi'] = "-"
-                        kolom_tampil.append('Klasifikasi')
+                    # Jika di sheet slims tidak ada kolom klasifikasi khusus, kita isi dengan tanda '-'
+                    hasil_filter['Kodefikasi'] = "-"
+
+                # --- PACKING 3 KOLOM UTAMA YANG DIMINTA ---
+                # Kita buat struktur dataframe baru yang isinya HANYA 3 kolom ini secara mutlak
+                df_final = hasil_filter[['Judul', 'Kodefikasi', 'Tempat Ditemukan (Kolom)']].copy()
                 
-                # Memotong dataframe berdasarkan kolom yang valid ditemukan
-                st.session_state.df_tabel = hasil_filter[kolom_tampil]
+                # Simpan ke session state
+                st.session_state.df_tabel = df_final
                 st.session_state.kata_kunci = search_query
             else:
                 st.session_state.df_tabel = "KOSONG"
@@ -94,7 +103,7 @@ if df is not None:
             st.warning("Silakan masukkan kata kunci pencarian terlebih dahulu!")
             st.session_state.df_tabel = None
 
-    # 3. Tampilkan Hasil Pencarian (Hanya Judul dan Klasifikasi secara Read-Only)
+    # 3. Tampilkan Tiga Kolom Hasil Pencarian secara Read-Only
     if st.session_state.df_tabel is not None:
         if isinstance(st.session_state.df_tabel, str) and st.session_state.df_tabel == "KOSONG":
             st.error("Data tidak ditemukan di kolom manapun pada sheet 'slims'.")
@@ -102,11 +111,7 @@ if df is not None:
             
             st.success(f"Ditemukan {len(st.session_state.df_tabel)} baris data yang mengandung kata kunci '{st.session_state.kata_kunci}'")
             
-            # Jika kolom Klasifikasi terpaksa di-generate manual karena tidak ada kecocokan nama kolom asli
-            if 'Klasifikasi' in st.session_state.df_tabel.columns and (st.session_state.df_tabel['Klasifikasi'] == "-").all() and 'Klasifikasi' not in df.columns:
-                st.warning("Catatan: Kolom Klasifikasi / Kode tidak terdeteksi secara otomatis di sheet 'slims'.")
-
-            # Tampilkan tabel data hasil filter
+            # Menampilkan tabel final yang dijamin berisi 3 kolom
             st.dataframe(
                 st.session_state.df_tabel,
                 use_container_width=True,
